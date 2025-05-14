@@ -1,246 +1,227 @@
 import os
-import re
-from collections import Counter
 import docx2txt
+import re
 import PyPDF2
 import streamlit as st
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
 import pymysql
 import hashlib
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+from sklearn.preprocessing import MinMaxScaler
 
-UPLOAD_FOLDER = "Uploads/"
+UPLOAD_FOLDER = 'uploads/'
 
-# MySQL connection setup
+# ✅ Initialize Streamlit session state
+if 'logged_in' not in st.session_state:
+    st.session_state.logged_in = False
+if 'username' not in st.session_state:
+    st.session_state.username = None
+if 'register_mode' not in st.session_state:
+    st.session_state.register_mode = False
+
+# ✅ MySQL Connection
 def create_connection():
     return pymysql.connect(
         host='localhost',
         port=3306,
-        user="Shariqa",
-        password="Sharu@123",
+        user="gprec",
+        password="Gprec@321",
         database="RESUME"
     )
 
-# Initialize database and create table if not exists
-def initialize_database():
-    conn = create_connection()
-    cursor = conn.cursor()
-    try:
-        cursor.execute("CREATE DATABASE IF NOT EXISTS RESUME")
-        cursor.execute("USE RESUME")
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS users (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                username VARCHAR(100) NOT NULL UNIQUE,
-                password VARCHAR(255) NOT NULL
-            )
-        """)
-        conn.commit()
-    except pymysql.MySQLError as err:
-        st.error(f"Error initializing database: {err}")
-    finally:
-        cursor.close()
-        conn.close()
-
-# User management functions
-def add_user(username, password):
-    hashed = hashlib.sha256(password.encode('utf-8')).hexdigest()
-    conn = create_connection()
-    cursor = conn.cursor()
-    try:
-        cursor.execute("INSERT INTO users (username, password) VALUES (%s, %s)", (username, hashed))
-        conn.commit()
-        st.success("User registered successfully!")
-    except pymysql.MySQLError as err:
-        st.error(f"Error: {err}")
-    finally:
-        cursor.close()
-        conn.close()
-
-def login_user(username, password):
-    hashed = hashlib.sha256(password.encode('utf-8')).hexdigest()
-    conn = create_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT password FROM users WHERE username=%s", (username,))
-    result = cursor.fetchone()
-    cursor.close()
-    conn.close()
-    if result and result[0] == hashed:
-        return True
-    return False
-
-# Functions to extract text from different file types
-from PyPDF2 import PdfReader
-
-def extract_text_from_pdf(pdf_file):
-    text = ""
-    pdf_reader = PdfReader(pdf_file)
-    for page in pdf_reader.pages:
-        text += page.extract_text() or ""
-    return text
-
-def extract_text_from_docx(docx_file):
-    return docx2txt.process(docx_file)
-
-def extract_text_from_txt(txt_file):
-    return txt_file.read().decode('utf-8')
-
-
+# ✅ Extract text from resumes
 def extract_text(file_path):
     if file_path.endswith('.pdf'):
-        return extract_text_from_pdf(file_path)
+        text = ""
+        with open(file_path, 'rb') as file:
+            reader = PyPDF2.PdfReader(file)
+            for page in reader.pages:
+                text += page.extract_text() or ""
+        return text.strip()
     elif file_path.endswith('.docx'):
-        return extract_text_from_docx(file_path)
+        return docx2txt.process(file_path).strip()
     elif file_path.endswith('.txt'):
-        return extract_text_from_txt(file_path)
-    else:
-        return ""
+        with open(file_path, 'r', encoding='utf-8') as file:
+            return file.read().strip()
+    return ""
 
-# Function to extract key terms from text (job description or resumes)
-def extract_key_terms(text):
-    stop_words = set(["the", "is", "in", "and", "to", "with", "a", "for", "of", "on", "or", "as", "by"])
-    text = text.lower()
-    words = re.findall(r'\b\w+\b', text)
-    terms = [word for word in words if word not in stop_words]
-    return Counter(terms)
+# ✅ Validate if a file is a resume
+def is_resume_file(file_path):
+    text = extract_text(file_path)
+    if len(text) < 100:
+        return False
+    resume_keywords = ["experience", "education", "skills", "projects", "certifications","professional", "portfolio", "career",
+     "accomplishments", "achievements", "summary", "contact", "references","objective"]
+    return sum(1 for keyword in resume_keywords if keyword.lower() in text.lower()) >= 4
 
-# Generate suggestions for resumes based on job description
-def generate_suggestions(job_description, resumes):
-    job_terms = extract_key_terms(job_description)
+# ✅ Generate suggestions based on job role
+def generate_suggestions(job_role, resume_text):
     suggestions = []
-    for resume in resumes:
-        resume_terms = extract_key_terms(resume)
-        missing_terms = job_terms - resume_terms
-        if missing_terms:
-            missing_keywords = ', '.join(missing_terms.keys())
-            suggestions.append(f"Consider adding these keywords to your resume: {missing_keywords}")
-        else:
-            suggestions.append("Your resume is a good match for the job description.")
+    job_role = job_role.lower()
+    if "data analyst" in job_role or "data scientist" in job_role:
+        if "python" not in resume_text.lower():
+            suggestions.append("🔹 Add Python skills, essential for data analysis.")
+        if "sql" not in resume_text.lower():
+            suggestions.append("🔹 Include SQL experience for data querying.")
+    elif "java developer" in job_role or "software developer" in job_role:
+        if "java" not in resume_text.lower():
+            suggestions.append("🔹 Add Java experience, a core requirement.")
+        if "spring boot" not in resume_text.lower():
+            suggestions.append("🔹 Mention Spring Boot for enterprise apps.")
+    elif "web developer" in job_role:
+        if "html" not in resume_text.lower() or "css" not in resume_text.lower():
+            suggestions.append("🔹 Highlight HTML/CSS skills for UI development.")
+    if not suggestions:
+        suggestions.append("✅ Your resume is relevant but could be improved with more details on projects.")
     return suggestions
 
-# Match resumes and generate suggestions
-def match_resumes(job_description, resume_files):
-    resumes = []
+def detect_fake_university(text):
+    fake_universities = [
+        "Rochville University", "Almeda University", "Axact University",
+        "Corllins University", "Kings Lake University"
+    ]
+    return any(uni.lower() in text.lower() for uni in fake_universities)
+
+def detect_fake_company(text):
+    fake_companies = [
+        "Apex Global Solutions", "Dream Tech Solutions", "Innovative Dynamics Ltd",
+        "Future Vision Technologies", "Skyline Infosys"
+    ]
+    return any(company.lower() in text.lower() for company in fake_companies)
+
+def detect_unrealistic_experience(text):
+    match = re.findall(r'(\d{1,2})\s*years', text.lower())
+    return any(int(years) > 40 or int(years) < 0 for years in map(int, match))
+
+# ✅ Resume matching function
+def match_resumes(job_description, resume_files, job_role):
+    resumes, valid_files, resume_texts = [], [], []
     for resume_file in resume_files:
-        # Directly read file from the uploaded file object without saving to disk
-        if resume_file.type == 'application/pdf':
-            # For PDFs
-            text = extract_text_from_pdf(resume_file)
-        elif resume_file.type == 'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
-            # For DOCX
-            text = extract_text_from_docx(resume_file)
-        elif resume_file.type == 'text/plain':
-            # For TXT
-            text = extract_text_from_txt(resume_file)
-        else:
-            st.error(f"Unsupported file type: {resume_file.type}")
+        file_path = os.path.join(UPLOAD_FOLDER, resume_file.name)
+        with open(file_path, 'wb') as f:
+            f.write(resume_file.getbuffer())
+        if not is_resume_file(file_path):
+            st.warning(f"⚠️ Skipping {resume_file.name} - Not a valid resume file.")
             continue
+        resume_text = extract_text(file_path)
+        resumes.append(resume_text)
+        valid_files.append(resume_file)
+        resume_texts.append(resume_text)
+    if not resumes:
+        return [], [], [], []
+    vectorizer = TfidfVectorizer(ngram_range=(1, 3), stop_words='english', max_features=5000)
+    tfidf_matrix = vectorizer.fit_transform([job_description] + resumes)
+    similarity_matrix = cosine_similarity(tfidf_matrix[0:1], tfidf_matrix[1:])[0]
+    scaler = MinMaxScaler(feature_range=(60, 100))
+    scores_scaled = scaler.fit_transform(similarity_matrix.reshape(-1, 1)).flatten()
+    top_indices = scores_scaled.argsort()[-5:][::-1]
+    top_resumes = [valid_files[i].name for i in top_indices if i < len(valid_files)]
+    scores = [round(scores_scaled[i], 2) for i in top_indices if i < len(scores_scaled)]
+    fake_checks = []
+    suggestions = []
 
-        resumes.append(text)
+    fake_checks = []
+    suggestions = []
 
-    # Vectorize and compute similarity
-    vectorizer = TfidfVectorizer().fit_transform([job_description] + resumes)
-    vectors = vectorizer.toarray()
+    for i in top_indices:
+        if i >= len(resume_texts):
+            fake_checks.append("❌ Unable to verify fake details.")
+            suggestions.append(["❌ Unable to analyze suggestions due to indexing error."])
+        else:
+            text = resume_texts[i]
+            fake_flag = False
+            if detect_fake_university(text):
+                fake_checks.append("⚠️ Fake University Detected")
+                fake_flag = True
+            elif detect_fake_company(text):
+                fake_checks.append("⚠️ Fake Company Detected")
+                fake_flag = True
+            elif detect_unrealistic_experience(text):
+                fake_checks.append("⚠️ Unrealistic Experience Detected")
+                fake_flag = True
+            if not fake_flag:
+                fake_checks.append("✅ Genuine")
 
-    job_vector = vectors[0]
-    resume_vectors = vectors[1:]
-    similarities = cosine_similarity([job_vector], resume_vectors)[0]
-
-    # Sort and select top matches
-    top_indices = similarities.argsort()[-5:][::-1]
-    top_resumes = [resume_files[i].name for i in top_indices]
-    similarity_scores = [round(similarities[i], 2) for i in top_indices]
-    prediction_scores = [round(((score + 1) / 2) * 100, 2) for score in similarity_scores]
-
-    # Generate suggestions for the top resumes
-    top_resumes_texts = [resumes[i] for i in top_indices]
-    suggestions = generate_suggestions(job_description, top_resumes_texts)
-
-    return top_resumes, similarity_scores, prediction_scores, suggestions
+            if scores_scaled[i] < 70:
+                suggestions.append(generate_suggestions(job_role, text))
+            else:
+                suggestions.append(["✅ Good match! No major changes needed."])
 
 
-# Create upload folder if it doesn't exist
-if not os.path.exists(UPLOAD_FOLDER):
-    os.makedirs(UPLOAD_FOLDER)
+    return top_resumes, scores, fake_checks, suggestions
 
-# Initialize the database and table
-initialize_database()
-
-# Streamlit interface
-st.title("Resume Analyzer")
-
-if 'logged_in' not in st.session_state:
-    st.session_state.logged_in = False
-
-def logout():
-    st.session_state.logged_in = False
-    st.success("Logged out successfully!")
+# ✅ Streamlit UI
+st.title("AI Resume Analyzer")
 
 if not st.session_state.logged_in:
-    st.subheader("Login")
-    username = st.text_input("Username")
-    password = st.text_input("Password", type='password')
-   
-    if st.button("Login"):
-        if login_user(username, password):
-            st.session_state.logged_in = True
-            st.success("Logged in successfully!")
-        else:
-            st.error("Invalid username or password.")
-   
-    st.subheader("Register")
-    new_username = st.text_input("New Username")
-    new_password = st.text_input("New Password", type='password')
-   
-    if st.button("Register"):
-        if new_username and new_password:
-            add_user(new_username, new_password)
-        else:
-            st.error("Please fill in all fields.")
-else:
-    st.success("Welcome to the Resume Analyzer!")
-   
-    if st.button("Logout"):
-        logout()
+    if st.session_state.register_mode:
+        st.subheader("Register")
+        new_username = st.text_input("Choose a username")
+        new_password = st.text_input("Choose a password", type='password')
+        confirm_password = st.text_input("Confirm password", type='password')
 
-    # Add custom CSS for responsive design
-    st.markdown("""
-        <style>
-            .container {
-                max-width: 800px;
-                margin: auto;
-                background: white;
-                padding: 20px;
-                border-radius: 8px;
-                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-            }
-            .result {
-                background-color: #dff0d8;
-                padding: 10px;
-                border-radius: 8px;
-                margin-top: 20px;
-            }
-        </style>
-    """, unsafe_allow_html=True)
-
-    with st.container():
-        st.subheader("Enter Job Description")
-        job_description = st.text_area("Job Description")
-
-        st.subheader("Upload Resumes")
-        resume_files = st.file_uploader("Upload Resumes", type=['pdf', 'docx', 'txt'], accept_multiple_files=True)
-
-        if st.button("Match Resumes"):
-            if not resume_files or not job_description:
-                st.warning("Please upload resumes and enter a job description.")
+        if st.button("Register"):
+            if not new_username or not new_password or not confirm_password:
+                st.error("❌ Please fill all the fields.")
+            elif new_password != confirm_password:
+                st.error("❌ Passwords do not match.")
             else:
-                top_resumes, similarity_scores, prediction_scores, suggestions = match_resumes(job_description, resume_files)
+                conn = create_connection()
+                cursor = conn.cursor()
+                cursor.execute("SELECT * FROM users WHERE username = %s", (new_username,))
+                if cursor.fetchone():
+                    st.error("⚠️ Username already exists. Try another one.")
+                else:
+                    hashed_pw = hashlib.sha256(new_password.encode('utf-8')).hexdigest()
+                    cursor.execute("INSERT INTO users (username, password) VALUES (%s, %s)", (new_username, hashed_pw))
+                    conn.commit()
+                    st.success("✅ Registered successfully! You can now login.")
+                    st.session_state.register_mode = False
+                cursor.close()
+                conn.close()
+        if st.button("Back to Login"):
+            st.session_state.register_mode = False
 
-                # Display results
-                st.success("Top Matching Resumes:")
-                for resume, score, pred_score, suggestion in zip(top_resumes, similarity_scores, prediction_scores, suggestions):
-                    st.write(f"**{resume}**:  <span style='font-size:24px; font-weight:bold;'>Prediction Score: {pred_score}%</span>", unsafe_allow_html=True)
-                    
-                    st.write(f"<p style='font-size:20px; font-weight:bold;'>Suggestions:</p> {suggestion}", unsafe_allow_html=True)
+    else:
+        st.subheader("Login")
+        username = st.text_input("Username")
+        password = st.text_input("Password", type='password')
 
-                    st.write("---")
+        if st.button("Login"):
+            conn = create_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT password FROM users WHERE username=%s", (username,))
+            result = cursor.fetchone()
+            if result and hashlib.sha256(password.encode('utf-8')).hexdigest() == result[0]:
+                st.session_state.logged_in = True
+                st.session_state.username = username
+                st.success("✅ Logged in successfully!")
+            else:
+                st.error("❌ Invalid username or password.")
+            cursor.close()
+            conn.close()
+
+        if st.button("Register"):
+            st.session_state.register_mode = True
+
+else:
+    st.subheader("Enter Job Description")
+    job_description = st.text_area("Job Description")
+    job_role = st.text_input("Enter Job Role")
+    resume_files = st.file_uploader("Upload Resumes", type=['pdf', 'docx', 'txt'], accept_multiple_files=True)
+
+    if st.button("Match Resumes"):
+        top_resumes, scores, fake_checks,suggestions = match_resumes(job_description, resume_files, job_role)
+        if not top_resumes:
+            st.error("❌ No valid resumes matched the job description.")
+        else:
+            for i, (resume, score, fake_status, suggestion_list) in enumerate(zip(top_resumes, scores, fake_checks, suggestions)):
+                st.write(f"📄 {resume} \n🔍 Score: {score}% \n⚠️ Fake Check: {fake_status}")
+                if score < 70:
+                    st.warning("🔍 Suggestions for Improvement:")
+                    for suggestion in suggestion_list:
+                        st.write(suggestion)
+
+    if st.button("Logout"):
+        st.session_state.logged_in = False
+        st.success("Logged out successfully.")
