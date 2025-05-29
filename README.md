@@ -1,51 +1,93 @@
-# AI Resume Analyzer Project 🚀
+# 🧠 AI Resume Analyzer
 
-## 🌟 Overview
-Welcome to the **AI Resume Analyzer**! This project leverages cutting-edge **Artificial Intelligence (AI)** and **Natural Language Processing (NLP)** to revolutionize the recruitment process. It automates the resume screening and job matching process, enabling hiring teams to quickly identify the best candidates and make data-driven decisions. Say goodbye to manual resume screening and hello to **efficiency, accuracy**, and **bias-free hiring**.
+The **AI Resume Analyzer** is an intelligent web application that automates resume screening using NLP techniques. It compares uploaded resumes against a job description, detects fake information, and provides tailored suggestions to improve resume quality — saving 80% of manual screening time and increasing precision in hiring decisions.
 
-## ⚡ Key Features
-- **Automated Resume Screening**: Powered by advanced NLP and AI algorithms, the system efficiently processes resumes and ranks candidates based on relevance to job descriptions.
-- **Time Efficiency**: Save up to **80% of the time** traditionally spent on manual resume screening, freeing up recruiters to focus on high-impact tasks.
-- **High Precision**: Achieve **85% precision** in matching candidates with job descriptions, ensuring the right fit every time.
-- **Bias-Free Ranking**: By using objective algorithms, the tool minimizes human bias, fostering diversity and fairness in hiring.
-- **Seamless Integration**: Easy-to-use web interface via **Streamlit**, where users can upload resumes and job descriptions for instant analysis.
+---
 
-## 🔧 Technologies Used
-- **Languages**: Python (for AI and backend logic)
-- **Libraries**: 
-  - **Streamlit**: For building an intuitive web interface
-  - **NLTK, spaCy**: For natural language processing and text analysis
-  - **scikit-learn**: For implementing machine learning algorithms
-  - **pandas, numpy**: For data manipulation and processing
-- **Database**: **MySQL** for managing and storing resumes and job descriptions
-- **Deployment**: Cloud hosting for accessibility anywhere
+## 🚀 Features
 
-## 🚀 Installation Guide
-To get started with the AI Resume Analyzer, follow these steps:
+- 🔍 **Resume Matching** using TF-IDF and Cosine Similarity
+- 📄 **Multi-format Support**: `.pdf`, `.docx`, `.txt`
+- ⚠️ **Fake Info Detection**: Checks for fake universities/companies
+- 💡 **Improvement Suggestions** based on job role
+- 🔐 **Login/Signup System** with secure password hashing
+- 🖥️ **Streamlit UI** for easy interaction
 
-1. **Clone the Repository**:
-   ```bash
-   git clone https://github.com/your-username/Resume_Analyzer_Project.git
-**Install Dependencies:** Make sure you have Python installed, then use pip to install the required libraries: pip install -r requirements.txt
-## 🌐 Usage
-1. **Launch the Web App**:  
-   Run the app locally using Streamlit:
-   ```bash
-   streamlit run app.py
+---
 
+## 🧰 Tech Stack
 
-2. **Upload Resumes**:
-   - Upload your resume (in PDF or DOCX format) and a job description.
-   - The system will analyze the content and rank the resumes based on their relevance to the job description.
+- **Frontend**: Streamlit  
+- **Backend**: Python  
+- **NLP/ML**: scikit-learn, PyPDF2, docx2txt  
+- **Database**: MySQL (via pymysql)  
+- **Others**: hashlib, os, re
 
-3. **View Results**:
-   - Get a detailed analysis, including candidate-job matching score, key skills extracted, and recommendations for improving the resume.
+---
+## 🛠️ MySQL Configuration
+1. **Create Database and Table**
+Log into your MySQL client and run:
+
+CREATE DATABASE RESUME;
+USE RESUME;
+CREATE TABLE users (
+    username VARCHAR(50) PRIMARY KEY,
+    password VARCHAR(100)
+);
 
 
-## 💡 Future Enhancements
-- **Integration with Applicant Tracking Systems (ATS)**: To seamlessly integrate the tool with real-world recruitment platforms.
-- **Machine Learning Model Training**: Continuous improvement of the AI models for better resume matching accuracy.
-- **Multi-Language Support**: Expanding the tool to support resumes in multiple languages, further enhancing its global applicability.
 
-Let the **AI Resume Analyzer** transform the way you screen resumes, saving you time and effort while ensuring better recruitment decisions. 🔍💼
+**2. Update Credentials** 
+in resume.py
+Replace the placeholders with your actual MySQL credentials:
 
+
+def create_connection():
+    return pymysql.connect(
+        host='localhost',
+        user='your_username',
+        password='your_password',
+        db='RESUME'
+    )
+
+---
+## ▶️ Run the Application
+In the terminal, run:
+**streamlit run resume.py**
+This will launch the app in your default web browser.
+
+---
+
+## 💡 How It Works
+* User logs in or creates an account.
+
+* Enters the job title and description.
+
+* Uploads one or more resumes.
+
+**The app:**
+
+* Extracts and cleans resume content
+
+* Converts resumes and job description into TF-IDF vectors
+
+* Uses cosine similarity to find the best match
+
+* Detects fake universities and companies
+
+* Shows match scores and suggestions
+
+---
+
+## 📊 Sample Output
+
+* File: resume1.pdf
+* Match Score: 85.73%
+* Fake Info: No fake university/company detected
+* Suggestions: Add role-specific keywords like 'Python', 'Data Analysis'
+
+---
+🙋‍♀️ Author
+Shaik Shariqa Saif
+🎓 Final Year Engineering Student
+🔍 Data Science Enthusiast
